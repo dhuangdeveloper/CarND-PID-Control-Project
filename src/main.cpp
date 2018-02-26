@@ -1,9 +1,11 @@
 #include <uWS/uWS.h>
 #include <iostream>
+#include <string>
 #include "json.hpp"
 #include "PID.h"
 #include <math.h>
-
+#include <stdexcept>
+#include <stdlib.h>
 // for convenience
 using json = nlohmann::json;
 
@@ -28,14 +30,24 @@ std::string hasData(std::string s) {
   return "";
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+
   uWS::Hub h;
-
+  int num_calls(0);
   PID pid;
-  // TODO: Initialize the pid variable.
 
-  h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  if (argc!=4){
+    // The parameter setting is hard-coded as default here
+    pid.Init(0.165,0.001,1.143);
+  } else {
+    // take in command line argument as the parameter setting. This is used to avoid rebuliding the code each time during parameter optimization.
+    pid.Init(atof(argv[1]), atof(argv[2]), atof(argv[3]));
+  }
+
+  //pid.Init(std::stod(Kp_str), std::stod(Ki_str), std::stod(Kd_str));
+  std::cout << "Kp: " << pid.Kp <<" Ki: " <<pid.Ki << "Kd: " << pid.Kd << std::endl;
+  h.onMessage([&pid, &num_calls](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -51,15 +63,23 @@ int main()
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
           double steer_value;
-          /*
-          * TODO: Calcuate steering value here, remember the steering value is
-          * [-1, 1].
-          * NOTE: Feel free to play around with the throttle and speed. Maybe use
-          * another PID controller to control the speed!
-          */
-          
+
+          // Calcuate steering value
+          pid.UpdateError(cte);
+          steer_value = (-pid.Kp * pid.p_error
+            -pid.Ki * pid.i_error
+            -pid.Kd * pid.d_error);
+          if (steer_value >1){
+            steer_value = 1;
+          } else if (steer_value<-1) {
+            steer_value = -1;
+          }
+
+
+
           // DEBUG
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          num_calls++;            
+          std::cout << "num " << num_calls << " TE " << pid.TotalError()<< " AE " << (pid.TotalError()/num_calls) <<" CTE: " << cte << " Steering Value: " << steer_value << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
